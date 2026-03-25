@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Economic Dispatch — Power System Optimizer</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Sora:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg:      #080c10;
+  --surface: #0d1117;
+  --panel:   #111820;
+  --border:  #1e2d3d;
+  --amber:   #f59e0b;
+  --amber2:  #fbbf24;
+  --green:   #22c55e;
+  --blue:    #38bdf8;
+  --red:     #ef4444;
+  --text:    #d1d5db;
+  --muted:   #4b5563;
+  --g1: #f59e0b;
+  --g2: #38bdf8;
+  --g3: #4ade80;
+  --g4: #f472b6;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:'Poppins',sans-serif; min-height:100vh;
+  padding-bottom:4rem;
+  background-image:
+    radial-gradient(ellipse 80% 40% at 50% -10%, rgba(245,158,11,0.05), transparent),
+    repeating-linear-gradient(0deg,transparent,transparent 39px,rgba(30,45,61,0.3) 40px),
+    repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(30,45,61,0.3) 40px);
+}
+body::before{
+  content:''; position:fixed; inset:0; pointer-events:none; z-index:9999;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.025) 2px,rgba(0,0,0,0.025) 4px);
+}
+
+/* TOPBAR */
+.topbar{
+  background:var(--surface); border-bottom:1px solid var(--border);
+  padding:.65rem 1.5rem; display:flex; align-items:center;
+  justify-content:space-between; position:sticky; top:0; z-index:100;
+}
+.tb-left{display:flex;align-items:center;gap:.8rem;}
+.sys-title{font-family:'Sora',sans-serif; font-size:.82rem; font-weight:700; color:#fff;}
+.sys-title span{color:var(--amber);}
+.status-pill{
+  display:flex; align-items:center; gap:.4rem;
+  font-size:.7rem; color:var(--muted); font-weight:500;
+}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);animation:blink 2s ease-in-out infinite;}
+.dot.idle{background:var(--amber);box-shadow:0 0 6px var(--amber);}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:.35;}}
+
+/* HERO */
+.hero{
+  border-bottom:1px solid var(--border);
+  background:linear-gradient(180deg,rgba(245,158,11,.04) 0%,transparent 100%);
+  padding:2.2rem 1.5rem 1.5rem;
+}
+.hero-inner{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:1fr auto;align-items:end;gap:2rem;}
+.hero-tag{font-size:.65rem;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--amber);margin-bottom:.4rem;}
+.hero-h1{font-family:'Sora',sans-serif;font-size:clamp(1.4rem,3vw,2.1rem);font-weight:800;color:#fff;line-height:1.1;}
+.hero-h1 em{color:var(--amber);font-style:normal;}
+.hero-sub{margin-top:.5rem;font-size:.85rem;color:var(--muted);font-weight:300;line-height:1.65;max-width:480px;}
+.hero-stats{display:flex;gap:1.5rem;}
+.hs{text-align:right;}
+.hs-val{font-family:'Sora',sans-serif;font-size:1.6rem;font-weight:800;color:var(--amber);}
+.hs-lbl{font-size:.62rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
+
+/* MAIN */
+.main{max-width:1100px;margin:0 auto;padding:1.5rem 1.5rem 2rem;}
+.sec-lbl{
+  font-size:.62rem;font-weight:600;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--amber);margin-bottom:.8rem;display:flex;align-items:center;gap:.5rem;
+}
+.sec-lbl::after{content:'';flex:1;height:1px;background:var(--border);}
+
+/* FORMULA */
+.formula{
+  background:var(--panel);border:1px solid var(--border);
+  border-top:2px solid var(--amber);border-radius:0 0 8px 8px;
+  padding:1rem 1.4rem;margin-bottom:1.4rem;
+  display:flex;gap:2.5rem;flex-wrap:wrap;
+}
+.fb .fl{font-size:.6rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:.3rem;}
+.fb .fe{font-family:'Sora',sans-serif;font-size:.73rem;line-height:1.9;}
+.fe .fo{color:var(--amber);}
+.fe .fc{color:var(--g3);}
+.fe .fl2{color:var(--g4);}
+.fe .fm{color:var(--muted);}
+
+/* GEN GRID */
+.gen-grid{display:grid;grid-template-columns:1fr 1fr;gap:.9rem;margin-bottom:.9rem;}
+@media(max-width:660px){.gen-grid{grid-template-columns:1fr;}}
+.gen-card{
+  background:var(--panel);border:1px solid var(--border);
+  border-radius:8px;padding:1.1rem 1.2rem;position:relative;overflow:hidden;
+}
+.gen-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
+.gc1::before{background:var(--g1);}
+.gc2::before{background:var(--g2);}
+.gc3::before{background:var(--g3);}
+.gc4::before{background:var(--g4);}
+.gen-hdr{display:flex;align-items:center;gap:.6rem;margin-bottom:.9rem;}
+.gdot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.gc1 .gdot{background:var(--g1);box-shadow:0 0 6px var(--g1);}
+.gc2 .gdot{background:var(--g2);box-shadow:0 0 6px var(--g2);}
+.gc3 .gdot{background:var(--g3);box-shadow:0 0 6px var(--g3);}
+.gc4 .gdot{background:var(--g4);box-shadow:0 0 6px var(--g4);}
+.gen-name{font-family:'Sora',sans-serif;font-size:.72rem;font-weight:700;color:#fff;}
+.gen-type{font-size:.62rem;color:var(--muted);font-weight:400;}
+.gen-fields{display:grid;grid-template-columns:repeat(5,1fr);gap:.45rem;}
+.gf label{display:block;font-size:.58rem;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:.22rem;}
+.gf input{
+  width:100%;background:rgba(255,255,255,.04);border:1px solid var(--border);
+  border-radius:5px;color:var(--text);font-family:'Sora',sans-serif;
+  font-size:.71rem;padding:.38rem .45rem;outline:none;text-align:center;
+  transition:border-color .2s,box-shadow .2s;
+}
+.gf input:focus{border-color:var(--amber);box-shadow:0 0 0 2px rgba(245,158,11,.12);}
+
+/* DEMAND */
+.demand-card{
+  background:var(--panel);border:1px solid var(--border);border-radius:8px;
+  padding:1.1rem 1.4rem;margin-bottom:.9rem;display:flex;align-items:center;gap:2rem;flex-wrap:wrap;
+}
+.d-num .d-lbl{font-size:.6rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:.25rem;}
+.d-val{font-family:'Sora',sans-serif;font-size:2rem;font-weight:800;color:var(--amber);line-height:1;}
+.d-val span{font-size:.85rem;color:var(--muted);margin-left:.25rem;}
+.d-slider{flex:1;min-width:200px;}
+.d-slider label{display:block;font-size:.6rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:.45rem;}
+input[type=range]{-webkit-appearance:none;width:100%;height:4px;background:var(--border);border-radius:99px;outline:none;cursor:pointer;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--amber);box-shadow:0 0 8px rgba(245,158,11,.45);cursor:pointer;transition:transform .15s;}
+input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.2);}
+.d-ticks{display:flex;justify-content:space-between;font-size:.58rem;color:var(--muted);margin-top:.28rem;font-weight:500;}
+
+/* BUTTONS */
+.run-row{display:flex;gap:.8rem;margin-bottom:1.4rem;align-items:center;flex-wrap:wrap;}
+.btn-run{
+  background:var(--amber);color:#080c10;
+  font-family:'Sora',sans-serif;font-weight:700;font-size:.8rem;letter-spacing:.08em;
+  border:none;border-radius:6px;padding:.8rem 2rem;cursor:pointer;
+  transition:background .2s,box-shadow .2s,transform .1s;text-transform:uppercase;
+}
+.btn-run:hover{background:var(--amber2);box-shadow:0 0 20px rgba(245,158,11,.3);}
+.btn-run:active{transform:scale(.97);}
+.btn-run:disabled{opacity:.45;cursor:not-allowed;}
+.btn-reset{
+  background:transparent;color:var(--muted);
+  font-family:'Poppins',sans-serif;font-size:.75rem;font-weight:500;
+  border:1px solid var(--border);border-radius:6px;padding:.8rem 1.2rem;cursor:pointer;
+  transition:border-color .2s,color .2s;
+}
+.btn-reset:hover{border-color:var(--muted);color:var(--text);}
+.run-status{
+  font-size:.75rem;font-weight:500;padding:.48rem .9rem;border-radius:5px;display:none;
+}
+.run-status.ok{background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.2);}
+.run-status.err{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2);}
+
+/* DIVIDER */
+hr.div{border:none;border-top:1px solid var(--border);margin-bottom:1.4rem;}
+
+/* DASHBOARD */
+#dashboard{display:none;}
+
+/* KPI ROW */
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:.8rem;margin-bottom:.9rem;}
+@media(max-width:660px){.kpi-row{grid-template-columns:repeat(2,1fr);}}
+.kpi{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:.9rem 1rem;position:relative;overflow:hidden;}
+.kpi::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;}
+.ka::after{background:linear-gradient(90deg,var(--amber),transparent);}
+.kb::after{background:linear-gradient(90deg,var(--blue),transparent);}
+.kg::after{background:linear-gradient(90deg,var(--green),transparent);}
+.kp::after{background:linear-gradient(90deg,var(--g4),transparent);}
+.kpi-lbl{font-size:.58rem;font-weight:600;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);margin-bottom:.35rem;}
+.kpi-val{font-family:'Sora',sans-serif;font-size:1.25rem;font-weight:700;line-height:1.1;}
+.kpi-unit{font-size:.6rem;color:var(--muted);margin-top:.2rem;}
+
+/* CHART LAYOUTS */
+.row-3{display:grid;grid-template-columns:2fr 1fr;gap:.8rem;margin-bottom:.8rem;}
+.row-2{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin-bottom:.8rem;}
+@media(max-width:720px){.row-3,.row-2{grid-template-columns:1fr;}}
+.chart-card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:1.1rem 1.2rem;}
+.cc-title{font-size:.62rem;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:var(--amber);margin-bottom:.2rem;}
+.cc-sub{font-size:.72rem;color:var(--muted);margin-bottom:.8rem;font-weight:300;}
+.chart-card canvas{max-height:210px;}
+.chart-card.tall canvas{max-height:240px;}
+
+/* DISPATCH TABLE */
+.dtable{width:100%;border-collapse:collapse;font-size:.8rem;}
+.dtable th{font-size:.58rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:.45rem .75rem;text-align:left;border-bottom:1px solid var(--border);}
+.dtable td{padding:.55rem .75rem;border-bottom:1px solid rgba(30,45,61,.5);font-family:'Poppins',sans-serif;}
+.dtable .mono{font-family:'Sora',sans-serif;font-size:.73rem;}
+.dtable tr:last-child td{border-bottom:none;}
+.dtable tr:hover td{background:rgba(255,255,255,.015);}
+.pbar-wrap{width:110px;}
+.pbar-bg{height:4px;background:rgba(255,255,255,.06);border-radius:99px;overflow:hidden;}
+.pbar-fill{height:100%;border-radius:99px;transition:width 1s ease;width:0%;}
+
+/* LAMBDA DETAIL */
+.lam-row{display:flex;align-items:center;gap:.75rem;padding:.45rem 0;border-bottom:1px solid rgba(30,45,61,.5);}
+.lam-row:last-child{border-bottom:none;}
+.lam-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.lam-name{font-size:.73rem;width:65px;flex-shrink:0;font-weight:500;}
+.lam-val{font-family:'Sora',sans-serif;font-size:.78rem;flex:1;}
+.lam-diff{font-size:.68rem;font-weight:600;}
+
+/* INTERPRETATION */
+.interp-grid{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin-bottom:.8rem;}
+@media(max-width:660px){.interp-grid{grid-template-columns:1fr;}}
+.interp{
+  background:var(--panel);border:1px solid var(--border);
+  border-left:3px solid var(--amber);border-radius:0 8px 8px 0;padding:1.1rem 1.3rem;
+}
+.interp-title{font-family:'Sora',sans-serif;font-size:.7rem;font-weight:700;color:var(--amber);margin-bottom:.65rem;letter-spacing:.04em;}
+.interp-body{font-size:.82rem;color:var(--text);line-height:1.75;font-weight:300;}
+.interp-body strong{color:#fff;font-weight:600;}
+.tag{display:inline-block;background:rgba(245,158,11,.1);color:var(--amber);font-family:'Sora',sans-serif;font-size:.62rem;padding:.1rem .45rem;border-radius:3px;margin:0 .1rem;}
+
+footer{text-align:center;padding:2rem 1rem;font-size:.6rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-top:1px solid var(--border);}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="tb-left">
+    <div class="sys-title">POWER<span>DISPATCH</span> · Economic Load Optimizer</div>
+  </div>
+  <div class="status-pill">
+    <div class="dot idle" id="sys-dot"></div>
+    <span id="sys-status">STANDBY</span>
+  </div>
+</div>
+
+<div class="hero">
+  <div class="hero-inner">
+    <div>
+      <div class="hero-tag">Non-Linear Programming · Sistem Tenaga Listrik Jawa-Bali</div>
+      <h1 class="hero-h1">Economic <em>Dispatch</em><br/>Optimization</h1>
+      <p class="hero-sub">Minimasi total biaya bahan bakar dari 4 unit pembangkit dengan karakteristik berbeda — memenuhi permintaan beban dengan batasan kapasitas dan kondisi optimalitas KKT.</p>
+    </div>
+    <div class="hero-stats">
+      <div class="hs"><div class="hs-val">4</div><div class="hs-lbl">Unit Pembangkit</div></div>
+      <div class="hs"><div class="hs-val" id="hero-mw">900</div><div class="hs-lbl">MW Demand</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+
+  <div class="sec-lbl">Formulasi Masalah</div>
+  <div class="formula">
+    <div class="fb">
+      <div class="fl">Fungsi Tujuan</div>
+      <div class="fe"><span class="fo">min F(P) = Σᵢ [ aᵢ + bᵢPᵢ + cᵢPᵢ² ]</span></div>
+    </div>
+    <div class="fb">
+      <div class="fl">Constraints</div>
+      <div class="fe">
+        <span class="fc">ΣPᵢ = P_demand</span> <span class="fm">(power balance)</span><br/>
+        <span style="color:var(--blue)">Pᵢ_min ≤ Pᵢ ≤ Pᵢ_max</span> <span class="fm">(kapasitas)</span>
+      </div>
+    </div>
+    <div class="fb">
+      <div class="fl">Syarat Optimal (Equal λ)</div>
+      <div class="fe"><span class="fl2">λ = bᵢ + 2cᵢPᵢ = konstan ∀i</span></div>
+    </div>
+  </div>
+
+  <div class="sec-lbl">Konfigurasi Unit Pembangkit</div>
+  <div class="gen-grid">
+    <div class="gen-card gc1">
+      <div class="gen-hdr"><div class="gdot"></div><div><div class="gen-name">UNIT G1</div><div class="gen-type">PLTU Batubara — Baseload</div></div></div>
+      <div class="gen-fields">
+        <div class="gf"><label>a ($/h)</label><input type="number" id="g1_a" value="240" step="1"/></div>
+        <div class="gf"><label>b ($/MWh)</label><input type="number" id="g1_b" value="7.0" step="0.1"/></div>
+        <div class="gf"><label>c ($/MW²h)</label><input type="number" id="g1_c" value="0.007" step="0.001"/></div>
+        <div class="gf"><label>Pmin (MW)</label><input type="number" id="g1_min" value="150" step="10"/></div>
+        <div class="gf"><label>Pmax (MW)</label><input type="number" id="g1_max" value="500" step="10"/></div>
+      </div>
+    </div>
+    <div class="gen-card gc2">
+      <div class="gen-hdr"><div class="gdot"></div><div><div class="gen-name">UNIT G2</div><div class="gen-type">PLTG Gas — Peaking</div></div></div>
+      <div class="gen-fields">
+        <div class="gf"><label>a ($/h)</label><input type="number" id="g2_a" value="160" step="1"/></div>
+        <div class="gf"><label>b ($/MWh)</label><input type="number" id="g2_b" value="8.5" step="0.1"/></div>
+        <div class="gf"><label>c ($/MW²h)</label><input type="number" id="g2_c" value="0.012" step="0.001"/></div>
+        <div class="gf"><label>Pmin (MW)</label><input type="number" id="g2_min" value="50" step="10"/></div>
+        <div class="gf"><label>Pmax (MW)</label><input type="number" id="g2_max" value="250" step="10"/></div>
+      </div>
+    </div>
+    <div class="gen-card gc3">
+      <div class="gen-hdr"><div class="gdot"></div><div><div class="gen-name">UNIT G3</div><div class="gen-type">PLTA Air — Renewable</div></div></div>
+      <div class="gen-fields">
+        <div class="gf"><label>a ($/h)</label><input type="number" id="g3_a" value="50" step="1"/></div>
+        <div class="gf"><label>b ($/MWh)</label><input type="number" id="g3_b" value="2.0" step="0.1"/></div>
+        <div class="gf"><label>c ($/MW²h)</label><input type="number" id="g3_c" value="0.003" step="0.001"/></div>
+        <div class="gf"><label>Pmin (MW)</label><input type="number" id="g3_min" value="30" step="10"/></div>
+        <div class="gf"><label>Pmax (MW)</label><input type="number" id="g3_max" value="200" step="10"/></div>
+      </div>
+    </div>
+    <div class="gen-card gc4">
+      <div class="gen-hdr"><div class="gdot"></div><div><div class="gen-name">UNIT G4</div><div class="gen-type">PLTGU Combined Cycle</div></div></div>
+      <div class="gen-fields">
+        <div class="gf"><label>a ($/h)</label><input type="number" id="g4_a" value="180" step="1"/></div>
+        <div class="gf"><label>b ($/MWh)</label><input type="number" id="g4_b" value="6.0" step="0.1"/></div>
+        <div class="gf"><label>c ($/MW²h)</label><input type="number" id="g4_c" value="0.006" step="0.001"/></div>
+        <div class="gf"><label>Pmin (MW)</label><input type="number" id="g4_min" value="100" step="10"/></div>
+        <div class="gf"><label>Pmax (MW)</label><input type="number" id="g4_max" value="400" step="10"/></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="demand-card">
+    <div class="d-num">
+      <div class="d-lbl">Total Load Demand</div>
+      <div class="d-val" id="d-display">900<span>MW</span></div>
+    </div>
+    <div class="d-slider">
+      <label>Geser untuk mengatur permintaan beban sistem</label>
+      <input type="range" id="demand-slider" min="300" max="1200" value="900" step="10"
+        oninput="
+          document.getElementById('d-display').innerHTML=this.value+'<span>MW</span>';
+          document.getElementById('hero-mw').textContent=this.value;
+        "/>
+      <div class="d-ticks"><span>300 MW</span><span>750 MW</span><span>1200 MW</span></div>
+    </div>
+  </div>
+
+  <div class="run-row">
+    <button class="btn-run" id="btn-run" onclick="runDispatch()">▶ DISPATCH NOW</button>
+    <button class="btn-reset" onclick="resetDash()">↺ RESET</button>
+    <div class="run-status" id="run-status"></div>
+  </div>
+
+  <hr class="div"/>
+
+  <div id="dashboard">
+    <div class="sec-lbl">Hasil Optimasi — Dashboard</div>
+
+    <div class="kpi-row">
+      <div class="kpi ka">
+        <div class="kpi-lbl">Total Biaya Optimal</div>
+        <div class="kpi-val" id="kpi-cost" style="color:var(--amber)">—</div>
+        <div class="kpi-unit">$/jam — total biaya bahan bakar</div>
+      </div>
+      <div class="kpi kb">
+        <div class="kpi-lbl">Lambda Optimal (λ*)</div>
+        <div class="kpi-val" id="kpi-lambda" style="color:var(--blue)">—</div>
+        <div class="kpi-unit">$/MWh — incremental cost sistem</div>
+      </div>
+      <div class="kpi kg">
+        <div class="kpi-lbl">Iterasi Konvergensi</div>
+        <div class="kpi-val" id="kpi-iter" style="color:var(--green)">—</div>
+        <div class="kpi-unit">jumlah iterasi hingga optimal</div>
+      </div>
+      <div class="kpi kp">
+        <div class="kpi-lbl">Power Balance Error</div>
+        <div class="kpi-val" id="kpi-err" style="color:var(--g4)">—</div>
+        <div class="kpi-unit">MW — error murni solver (pra-proyeksi)</div>
+      </div>
+    </div>
+
+    <div class="row-3">
+      <div class="chart-card">
+        <div class="cc-title">⚡ Dispatch Allocation</div>
+        <div class="cc-sub">Output MW optimal, biaya, dan incremental cost tiap unit pembangkit</div>
+        <table class="dtable">
+          <thead>
+            <tr><th>Unit</th><th>Jenis</th><th>Pmin</th><th>Pmax</th><th>P* (MW)</th><th>Biaya ($/h)</th><th>λᵢ ($/MWh)</th><th>Proporsi</th></tr>
+          </thead>
+          <tbody id="d-tbody"></tbody>
+        </table>
+      </div>
+      <div class="chart-card">
+        <div class="cc-title">◎ Power Share</div>
+        <div class="cc-sub">Proporsi kontribusi tiap unit terhadap total demand</div>
+        <canvas id="c-donut"></canvas>
+      </div>
+    </div>
+
+    <div class="row-2">
+      <div class="chart-card tall">
+        <div class="cc-title">📈 Cost Curves — fᵢ(Pᵢ)</div>
+        <div class="cc-sub">Kurva biaya kuadratik tiap unit; titik ● = posisi dispatch optimal P*</div>
+        <canvas id="c-cost"></canvas>
+      </div>
+      <div class="chart-card tall">
+        <div class="cc-title">📉 Konvergensi Biaya per Unit</div>
+        <div class="cc-sub">Biaya tiap unit dan total F(P) sepanjang iterasi solver</div>
+        <canvas id="c-conv"></canvas>
+      </div>
+    </div>
+
+    <div class="row-2">
+      <div class="chart-card tall">
+        <div class="cc-title">λ Incremental Cost Convergence</div>
+        <div class="cc-sub">λᵢ tiap unit menuju nilai equal — verifikasi kondisi optimalitas KKT</div>
+        <canvas id="c-lambda"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="cc-title">⚖ Equal Incremental Cost — Detail</div>
+        <div class="cc-sub">Semua λᵢ harus ≈ sama di kondisi optimal</div>
+        <div id="lam-detail" style="margin-top:.4rem"></div>
+      </div>
+    </div>
+
+    <div class="sec-lbl" style="margin-top:.4rem">Interpretasi Hasil</div>
+    <div class="interp-grid">
+      <div class="interp">
+        <div class="interp-title">📋 Membaca Dispatch Allocation</div>
+        <div class="interp-body" id="it-dispatch">—</div>
+      </div>
+      <div class="interp">
+        <div class="interp-title">λ Membaca Incremental Cost (λ*)</div>
+        <div class="interp-body" id="it-lambda">—</div>
+      </div>
+      <div class="interp">
+        <div class="interp-title">📉 Membaca Grafik Konvergensi</div>
+        <div class="interp-body" id="it-conv">—</div>
+      </div>
+      <div class="interp">
+        <div class="interp-title">⚡ Membaca Cost Curve</div>
+        <div class="interp-body" id="it-cost">—</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer>ECONOMIC DISPATCH OPTIMIZER · NON-LINEAR PROGRAMMING · PENALTY METHOD + GRADIENT DESCENT · ARMIJO LINE SEARCH</footer>
+
+<script>
+// ── Constants ──
+const COLORS = ['#f59e0b','#38bdf8','#4ade80','#f472b6'];
+const NAMES  = ['G1 PLTU Batubara','G2 PLTG Gas','G3 PLTA Air','G4 PLTGU CC'];
+const TYPES  = ['Batubara','Gas','Air (Hydro)','Combined Cycle'];
+
+let cDonut = null, cCost = null, cConv = null, cLambda = null;
+
+// ── Math helpers ──
+function costFn(p, a, b, c) { return a + b*p + c*p*p; }
+function lambdaFn(p, b, c)  { return b + 2*c*p; }
+
+function readGen(n) {
+  return {
+    a:   parseFloat(document.getElementById('g'+n+'_a').value)   || 0,
+    b:   parseFloat(document.getElementById('g'+n+'_b').value)   || 0,
+    c:   parseFloat(document.getElementById('g'+n+'_c').value)   || 0,
+    min: parseFloat(document.getElementById('g'+n+'_min').value) || 0,
+    max: parseFloat(document.getElementById('g'+n+'_max').value) || 0,
+  };
+}
+
+// ── Project feasible: clamp + rescale agar sum(P) = demand ──
+function projectFeasible(P, gens, demand) {
+  // Clamp ke [Pmin, Pmax]
+  var Pc = P.map(function(p, i) { return Math.max(gens[i].min, Math.min(gens[i].max, p)); });
+  var total = Pc.reduce(function(s, p) { return s + p; }, 0);
+  var diff = demand - total;
+  if (Math.abs(diff) > 0.01) {
+    var caps = Pc.map(function(p, i) { return diff > 0 ? gens[i].max - p : p - gens[i].min; });
+    var capTot = caps.reduce(function(s, v) { return s + v; }, 0);
+    if (capTot > 0.01) {
+      Pc = Pc.map(function(p, i) { return p + diff * caps[i] / capTot; });
+    }
+    // Final clamp
+    Pc = Pc.map(function(p, i) { return Math.max(gens[i].min, Math.min(gens[i].max, p)); });
+  }
+  return Pc;
+}
+
+function penaltyFn(P, gens, demand, mu) {
+  var F = 0;
+  for (var i = 0; i < P.length; i++) F += costFn(P[i], gens[i].a, gens[i].b, gens[i].c);
+  var eq = 0;
+  for (var i = 0; i < P.length; i++) eq += P[i];
+  eq -= demand;
+  var bnd = 0;
+  for (var i = 0; i < P.length; i++) {
+    var lo = gens[i].min - P[i]; if (lo > 0) bnd += lo*lo;
+    var hi = P[i] - gens[i].max; if (hi > 0) bnd += hi*hi;
+  }
+  return F + mu*(eq*eq + bnd);
+}
+
+function gradFn(P, gens, demand, mu) {
+  var h = 1e-5;
+  var g = [];
+  for (var i = 0; i < P.length; i++) {
+    var Pp = P.slice(); Pp[i] += h;
+    var Pm = P.slice(); Pm[i] -= h;
+    g.push((penaltyFn(Pp, gens, demand, mu) - penaltyFn(Pm, gens, demand, mu)) / (2*h));
+  }
+  return g;
+}
+
+function optimize(gens, demand) {
+  // Initial guess proportional to Pmax
+  var totMax = 0;
+  for (var i = 0; i < gens.length; i++) totMax += gens[i].max;
+  var P = [];
+  for (var i = 0; i < gens.length; i++) {
+    var p = demand * gens[i].max / totMax;
+    P.push(Math.max(gens[i].min, Math.min(gens[i].max, p)));
+  }
+  // FIX: project awal agar feasible dari awal
+  P = projectFeasible(P, gens, demand);
+
+  var histF = [], histCosts = [], histLambda = [];
+  var mu = 50;
+  var maxIter = 600;
+  var tol = 1e-4; // FIX: dari 1e-7 → 1e-4, lebih realistis untuk penalty method
+  var convergedIter = maxIter;
+
+  for (var iter = 0; iter < maxIter; iter++) {
+    // Record current state
+    var objVal = 0;
+    for (var i = 0; i < P.length; i++) objVal += costFn(P[i], gens[i].a, gens[i].b, gens[i].c);
+    histF.push(objVal);
+
+    var iterCosts = [];
+    for (var i = 0; i < P.length; i++) iterCosts.push(costFn(P[i], gens[i].a, gens[i].b, gens[i].c));
+    histCosts.push(iterCosts);
+
+    var iterLam = [];
+    for (var i = 0; i < P.length; i++) iterLam.push(lambdaFn(P[i], gens[i].b, gens[i].c));
+    histLambda.push(iterLam);
+
+    // Gradient
+    var fval = penaltyFn(P, gens, demand, mu);
+    var g = gradFn(P, gens, demand, mu);
+    var gnorm = 0;
+    for (var i = 0; i < g.length; i++) gnorm += g[i]*g[i];
+    gnorm = Math.sqrt(gnorm);
+
+    if (gnorm < tol) {
+      convergedIter = iter + 1;
+      break;
+    }
+
+    // Armijo line search
+    var alpha = 1.0;
+    var c1 = 1e-4;
+    for (var ls = 0; ls < 60; ls++) {
+      var Ptry = [];
+      for (var i = 0; i < P.length; i++) Ptry.push(P[i] - alpha*g[i]);
+      if (penaltyFn(Ptry, gens, demand, mu) < fval - c1*alpha*gnorm*gnorm) break;
+      alpha *= 0.5;
+    }
+
+    for (var i = 0; i < P.length; i++) P[i] -= alpha*g[i];
+
+    // FIX: project ke feasible setiap iterasi agar sum(P)=demand selalu terjaga
+    P = projectFeasible(P, gens, demand);
+
+    // FIX: mu naik lebih pelan dengan batas atas — cegah gradient meledak
+    if ((iter+1) % 80 === 0) mu = Math.min(mu * 3, 1e6);
+  }
+
+  // Final clamp + projection
+  P = projectFeasible(P, gens, demand);
+
+  // Compute pre-projection error (after final projection, error is minimal)
+  var totP = 0;
+  for (var i = 0; i < P.length; i++) totP += P[i];
+  var preErr = Math.abs(totP - demand);
+
+  // Record final state
+  var finalObj = 0;
+  for (var i = 0; i < P.length; i++) finalObj += costFn(P[i], gens[i].a, gens[i].b, gens[i].c);
+  histF.push(finalObj);
+  var fc = []; for (var i = 0; i < P.length; i++) fc.push(costFn(P[i], gens[i].a, gens[i].b, gens[i].c));
+  histCosts.push(fc);
+  var fl = []; for (var i = 0; i < P.length; i++) fl.push(lambdaFn(P[i], gens[i].b, gens[i].c));
+  histLambda.push(fl);
+
+  return { P: P, histF: histF, histCosts: histCosts, histLambda: histLambda, iters: convergedIter, preErr: preErr };
+}
+
+// ── Run ──
+function runDispatch() {
+  var gens = [];
+  for (var i = 1; i <= 4; i++) gens.push(readGen(i));
+  var demand = parseFloat(document.getElementById('demand-slider').value);
+
+  var statusEl = document.getElementById('run-status');
+  var btn = document.getElementById('btn-run');
+
+  // Validate
+  for (var i = 0; i < 4; i++) {
+    if (gens[i].min >= gens[i].max) {
+      statusEl.style.display = 'block'; statusEl.className = 'run-status err';
+      statusEl.textContent = '✕ G'+(i+1)+': Pmin harus < Pmax'; return;
+    }
+  }
+  var minCap = 0, maxCap = 0;
+  for (var i = 0; i < 4; i++) { minCap += gens[i].min; maxCap += gens[i].max; }
+  if (demand < minCap || demand > maxCap) {
+    statusEl.style.display = 'block'; statusEl.className = 'run-status err';
+    statusEl.textContent = '✕ Demand '+demand+' MW di luar rentang kapasitas ('+minCap+'–'+maxCap+' MW)'; return;
+  }
+
+  btn.disabled = true; btn.textContent = '◌ COMPUTING…';
+  document.getElementById('sys-dot').className = 'dot';
+  document.getElementById('sys-status').textContent = 'COMPUTING';
+  statusEl.style.display = 'none';
+
+  setTimeout(function() {
+    try {
+      var res = optimize(gens, demand);
+      renderDashboard(res, gens, demand);
+      btn.disabled = false; btn.textContent = '▶ RE-DISPATCH';
+      document.getElementById('sys-dot').className = 'dot idle';
+      document.getElementById('sys-status').textContent = 'OPTIMAL';
+      statusEl.style.display = 'block'; statusEl.className = 'run-status ok';
+      statusEl.textContent = '✓ Konvergen dalam ' + res.iters + ' iterasi.';
+      document.getElementById('dashboard').style.display = 'block';
+      document.getElementById('dashboard').scrollIntoView({behavior:'smooth'});
+    } catch(e) {
+      btn.disabled = false; btn.textContent = '▶ DISPATCH NOW';
+      document.getElementById('sys-dot').className = 'dot idle';
+      document.getElementById('sys-status').textContent = 'ERROR';
+      statusEl.style.display = 'block'; statusEl.className = 'run-status err';
+      statusEl.textContent = '✕ Error: ' + e.message;
+    }
+  }, 80);
+}
+
+function resetDash() {
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('run-status').style.display = 'none';
+  document.getElementById('sys-dot').className = 'dot idle';
+  document.getElementById('sys-status').textContent = 'STANDBY';
+  document.getElementById('btn-run').textContent = '▶ DISPATCH NOW';
+}
+
+function renderDashboard(res, gens, demand) {
+  var P = res.P, histF = res.histF, histCosts = res.histCosts, histLambda = res.histLambda;
+  var iters = res.iters, preErr = res.preErr;
+
+  var costs = [], lambdas = [], totalCost = 0, totalP = 0, sumLam = 0;
+  for (var i = 0; i < 4; i++) {
+    costs.push(costFn(P[i], gens[i].a, gens[i].b, gens[i].c));
+    lambdas.push(lambdaFn(P[i], gens[i].b, gens[i].c));
+    totalCost += costs[i]; totalP += P[i]; sumLam += lambdas[i];
+  }
+  var avgLam = sumLam / 4;
+
+  // KPIs
+  document.getElementById('kpi-cost').textContent   = totalCost.toFixed(2);
+  document.getElementById('kpi-lambda').textContent = avgLam.toFixed(4);
+  document.getElementById('kpi-iter').textContent   = iters;
+  document.getElementById('kpi-err').textContent    = preErr < 0.01 ? '< 0.01 ✓' : preErr.toFixed(3);
+
+  // Dispatch table
+  var rows = '';
+  for (var i = 0; i < 4; i++) {
+    var pct = (P[i]/demand*100).toFixed(1);
+    rows += '<tr>' +
+      '<td><span style="color:'+COLORS[i]+';font-family:Sora,sans-serif;font-size:.72rem;font-weight:700">G'+(i+1)+'</span></td>' +
+      '<td style="color:var(--muted)">'+TYPES[i]+'</td>' +
+      '<td class="mono" style="color:var(--muted)">'+gens[i].min+'</td>' +
+      '<td class="mono" style="color:var(--muted)">'+gens[i].max+'</td>' +
+      '<td class="mono" style="color:'+COLORS[i]+';font-weight:700">'+P[i].toFixed(2)+'</td>' +
+      '<td class="mono">'+costs[i].toFixed(2)+'</td>' +
+      '<td class="mono" style="color:var(--g4)">'+lambdas[i].toFixed(4)+'</td>' +
+      '<td class="pbar-wrap"><div class="pbar-bg"><div class="pbar-fill" id="pb'+i+'" style="background:'+COLORS[i]+'"></div></div>' +
+      '<div style="font-size:.6rem;color:var(--muted);margin-top:.2rem">'+pct+'%</div></td>' +
+      '</tr>';
+  }
+  rows += '<tr style="background:rgba(245,158,11,.05)">' +
+    '<td colspan="4" style="font-size:.6rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--amber)">TOTAL</td>' +
+    '<td class="mono" style="color:var(--amber);font-weight:700">'+totalP.toFixed(2)+'</td>' +
+    '<td class="mono" style="color:var(--amber);font-weight:700">'+totalCost.toFixed(2)+'</td>' +
+    '<td colspan="2"></td></tr>';
+  document.getElementById('d-tbody').innerHTML = rows;
+  setTimeout(function() {
+    for (var i = 0; i < 4; i++) {
+      var el = document.getElementById('pb'+i);
+      if (el) el.style.width = (P[i]/demand*100).toFixed(1)+'%';
+    }
+  }, 150);
+
+  // Donut
+  if (cDonut) cDonut.destroy();
+  cDonut = new Chart(document.getElementById('c-donut'), {
+    type: 'doughnut',
+    data: {
+      labels: NAMES,
+      datasets: [{ data: [P[0].toFixed(1),P[1].toFixed(1),P[2].toFixed(1),P[3].toFixed(1)],
+        backgroundColor: COLORS, borderColor: '#111820', borderWidth: 3, hoverOffset: 6 }]
+    },
+    options: {
+      cutout: '65%',
+      plugins: {
+        legend: { labels: { color: '#9ca3af', font: { family: 'Poppins', size: 10 }, boxWidth: 10 } },
+        tooltip: { callbacks: { label: function(ctx) { return ctx.label+': '+ctx.raw+' MW'; } } }
+      }
+    }
+  });
+
+  // Cost curves
+  var gMin = gens[0].min, gMax = gens[0].max;
+  for (var i = 1; i < 4; i++) {
+    if (gens[i].min < gMin) gMin = gens[i].min;
+    if (gens[i].max > gMax) gMax = gens[i].max;
+  }
+  var steps = 100;
+  var pArr = [], pLbls = [];
+  for (var k = 0; k < steps; k++) {
+    var pv = gMin + k*(gMax-gMin)/(steps-1);
+    pArr.push(pv);
+    pLbls.push(Math.round(pv));
+  }
+
+  var costDatasets = [];
+  for (var i = 0; i < 4; i++) {
+    var lineData = [];
+    for (var k = 0; k < steps; k++) {
+      lineData.push((pArr[k] >= gens[i].min && pArr[k] <= gens[i].max) ? costFn(pArr[k], gens[i].a, gens[i].b, gens[i].c) : null);
+    }
+    costDatasets.push({ label: NAMES[i], data: lineData, borderColor: COLORS[i], borderWidth: 1.8, backgroundColor: 'transparent', pointRadius: 0, tension: 0.3, spanGaps: false });
+  }
+  for (var i = 0; i < 4; i++) {
+    var best = 0;
+    for (var k = 1; k < steps; k++) {
+      if (Math.abs(pArr[k]-P[i]) < Math.abs(pArr[best]-P[i])) best = k;
+    }
+    var ptData = new Array(steps).fill(null);
+    ptData[best] = costFn(P[i], gens[i].a, gens[i].b, gens[i].c);
+    costDatasets.push({ label: 'P*'+(i+1), data: ptData, borderColor: COLORS[i], pointRadius: 7, pointBackgroundColor: COLORS[i], pointBorderColor: '#0d1117', pointBorderWidth: 2, showLine: false, spanGaps: false });
+  }
+
+  if (cCost) cCost.destroy();
+  cCost = new Chart(document.getElementById('c-cost'), {
+    type: 'line',
+    data: { labels: pLbls, datasets: costDatasets },
+    options: {
+      plugins: { legend: { labels: { color: '#9ca3af', font: { family: 'Poppins', size: 10 }, boxWidth: 10,
+        filter: function(item) { return item.text.indexOf('P*') === -1; } } } },
+      scales: {
+        x: { title: { display: true, text: 'P (MW)', color: '#4b5563', font: { family: 'Poppins', size: 10 } },
+          ticks: { color: '#4b5563', font: { family: 'Poppins', size: 9 }, maxTicksLimit: 8 }, grid: { color: '#1e2d3d' } },
+        y: { title: { display: true, text: 'Biaya ($/h)', color: '#4b5563', font: { family: 'Poppins', size: 10 } },
+          ticks: { color: '#4b5563', font: { family: 'Poppins', size: 9 } }, grid: { color: '#1e2d3d' } }
+      }
+    }
+  });
+
+  // Convergence
+  var iLabels = [];
+  for (var k = 0; k < histF.length; k++) iLabels.push(k);
+  var convDatasets = [{
+    label: 'Total F(P)', data: histF,
+    borderColor: '#e2e8f0', borderWidth: 2.2, backgroundColor: 'rgba(226,232,240,.05)',
+    pointRadius: 0, fill: true, tension: 0.3, borderDash: [4,3]
+  }];
+  for (var i = 0; i < 4; i++) {
+    var cd = [];
+    for (var k = 0; k < histCosts.length; k++) cd.push(histCosts[k][i]);
+    convDatasets.push({ label: NAMES[i], data: cd, borderColor: COLORS[i], borderWidth: 1.7, backgroundColor: 'transparent', pointRadius: 0, tension: 0.3 });
+  }
+  if (cConv) cConv.destroy();
+  cConv = new Chart(document.getElementById('c-conv'), {
+    type: 'line',
+    data: { labels: iLabels, datasets: convDatasets },
+    options: {
+      plugins: { legend: { labels: { color: '#9ca3af', font: { family: 'Poppins', size: 10 }, boxWidth: 10 } } },
+      scales: {
+        x: { ticks: { color: '#4b5563', font: { family: 'Poppins', size: 9 }, maxTicksLimit: 8 }, grid: { color: '#1e2d3d' } },
+        y: { title: { display: true, text: 'Biaya ($/h)', color: '#4b5563', font: { family: 'Poppins', size: 10 } },
+          ticks: { color: '#4b5563', font: { family: 'Poppins', size: 9 } }, grid: { color: '#1e2d3d' } }
+      }
+    }
+  });
+
+  // Lambda convergence
+  var lamDatasets = [];
+  for (var i = 0; i < 4; i++) {
+    var ld = [];
+    for (var k = 0; k < histLambda.length; k++) ld.push(histLambda[k][i]);
+    lamDatasets.push({ label: NAMES[i], data: ld, borderColor: COLORS[i], borderWidth: 1.7, backgroundColor: 'transparent', pointRadius: 0, tension: 0.3 });
+  }
+  if (cLambda) cLambda.destroy();
+  cLambda = new Chart(document.getElementById('c-lambda'), {
+    type: 'line',
+    data: { labels: iLabels, datasets: lamDatasets },
+    options: {
+      plugins: { legend: { labels: { color: '#9ca3af', font: { family: 'Poppins', size: 10 }, boxWidth: 10 } } },
+      scales: {
+        x: { ticks: { color: '#4b5563', font: { family: 'Poppins', size: 9 }, maxTicksLimit: 8 }, grid: { color: '#1e2d3d' } },
+        y: { title: { display: true, text: 'λ ($/MWh)', color: '#4b5563', font: { family: 'Poppins', size: 10 } },
+          ticks: { color: '#4b5563', font: { family: 'Poppins', size: 9 } }, grid: { color: '#1e2d3d' } }
+      }
+    }
+  });
+
+  // Lambda detail
+  var maxDev = 0;
+  for (var i = 0; i < 4; i++) { var d = Math.abs(lambdas[i]-avgLam); if (d > maxDev) maxDev = d; }
+  var lamHtml = '';
+  for (var i = 0; i < 4; i++) {
+    var dev = Math.abs(lambdas[i]-avgLam);
+    lamHtml += '<div class="lam-row">' +
+      '<div class="lam-dot" style="background:'+COLORS[i]+';box-shadow:0 0 5px '+COLORS[i]+'"></div>' +
+      '<div class="lam-name" style="color:'+COLORS[i]+'">'+NAMES[i].split(' ')[0]+'</div>' +
+      '<div class="lam-val">'+lambdas[i].toFixed(4)+' <span style="color:var(--muted);font-size:.62rem">$/MWh</span></div>' +
+      '<div class="lam-diff" style="color:'+(dev<0.05?'var(--green)':'var(--amber)')+'">Δ '+dev.toFixed(4)+'</div>' +
+      '</div>';
+  }
+  lamHtml += '<div style="margin-top:.75rem;font-size:.73rem;color:var(--muted)">λ* rata-rata: <span style="color:var(--g4);font-family:Sora,sans-serif">'+avgLam.toFixed(4)+'</span> $/MWh  ·  Max deviasi: <span style="color:'+(maxDev<0.05?'var(--green)':'var(--amber)')+';font-family:Sora,sans-serif">'+maxDev.toFixed(4)+'</span></div>';
+  document.getElementById('lam-detail').innerHTML = lamHtml;
+
+  // Interpretations
+  var topIdx = 0;
+  for (var i = 1; i < 4; i++) if (P[i] > P[topIdx]) topIdx = i;
+  var cheapIdx = 0;
+  for (var i = 1; i < 4; i++) if (costs[i] < costs[cheapIdx]) cheapIdx = i;
+  var convDrop = ((histF[0]-histF[histF.length-1])/histF[0]*100).toFixed(1);
+
+  document.getElementById('it-dispatch').innerHTML =
+    'Unit <strong style="color:'+COLORS[topIdx]+'">'+NAMES[topIdx]+'</strong> mendapat alokasi terbesar sebesar <strong>'+P[topIdx].toFixed(2)+' MW</strong>. Sementara <strong style="color:'+COLORS[cheapIdx]+'">'+NAMES[cheapIdx]+'</strong> beroperasi paling murah di <strong>$'+costs[cheapIdx].toFixed(2)+'/h</strong>. Total output sistem = <strong>'+totalP.toFixed(2)+' MW</strong> memenuhi demand <strong>'+demand+' MW</strong>.';
+
+  document.getElementById('it-lambda').innerHTML =
+    'λ* = <strong>'+avgLam.toFixed(4)+' $/MWh</strong> artinya menambah 1 MW beban ke sistem membutuhkan biaya tambahan ≈ <strong>$'+avgLam.toFixed(2)+'</strong>. Deviasi maksimum antar unit = <strong>'+maxDev.toFixed(4)+'</strong> — '+(maxDev<0.1?'mendekati equal, <span class="tag">kondisi KKT terpenuhi ✓</span>':'masih ada ruang optimasi lebih lanjut.')+'.';
+
+  document.getElementById('it-conv').innerHTML =
+    'Total biaya turun dari <strong>$'+histF[0].toFixed(2)+'/h</strong> ke <strong>$'+histF[histF.length-1].toFixed(2)+'/h</strong> — penurunan sebesar <strong>'+convDrop+'%</strong> dalam <strong>'+iters+' iterasi</strong>. Biaya per unit (garis berwarna) menunjukkan bagaimana optimizer mendistribusikan ulang beban tiap iterasi.';
+
+  document.getElementById('it-cost').innerHTML =
+    'Setiap kurva berbentuk parabola karena suku kuadratik <span class="tag">cᵢPᵢ²</span> — makin tinggi beban, kenaikan biaya semakin cepat (diminishing efficiency). Titik <strong>●</strong> di tiap kurva adalah posisi P* optimal hasil dispatch. Unit dengan kurva paling landai ('+NAMES[2]+') paling efisien per MW-nya.';
+}
+</script>
+</body>
+</html>
